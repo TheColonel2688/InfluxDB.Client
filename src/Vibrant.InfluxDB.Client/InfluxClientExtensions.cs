@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Newtonsoft.Json;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -512,6 +513,104 @@ namespace Vibrant.InfluxDB.Client
       {
          var parserResult = await client.ExecuteOperationAsync<ShowSeriesRow>( $"SHOW SERIES", db ).ConfigureAwait( false );
          return parserResult.Results.First();
+      }
+
+      private static T ParseSerieKey<T>(string key)
+      {
+
+            try
+            {
+                var keySplit = key.Split(',');
+
+                var builder = new StringBuilder();
+
+                builder.Append("{");
+
+                //** skip first item in split
+                for (int i = 1; i < keySplit.Length; i++)
+                {
+                    var withBackSlashRemoved = keySplit[i].Replace("\\", "");
+                    var variableAndValue = withBackSlashRemoved.Split('=');
+                    builder.Append("\"");
+                    builder.Append(variableAndValue[0]);
+                    builder.Append("\"");
+                    builder.Append(":");
+                    builder.Append("\"");
+                    builder.Append(variableAndValue[1]);
+                    builder.Append("\"");
+                    if (i + 1 < keySplit.Length)
+                    {
+                        builder.Append(",");
+                    }
+                }
+
+                builder.Append("}");
+
+                string serializedTags = builder.ToString();
+
+                var deserializedTags = JsonConvert.DeserializeObject<T>(serializedTags);
+
+                return deserializedTags;
+            }
+            catch (Exception ex)
+            {
+                throw new FormatException("Error parsing Serie Key. See inner exception for details", ex);
+            }
+      }
+
+      private static IList<T> ParseSeriesKeys<T>(List<InfluxSeries<ShowSeriesRow>> seriesGroup)
+      {
+          IList<T> results = new List<T>();
+          foreach (var series in seriesGroup)
+          {
+              foreach (var serie in series.Rows)
+              {
+                  results.Add(ParseSerieKey<T>(serie.Key));
+              }               
+          }
+          return results;
+      }
+
+      /// <summary>
+      /// The SHOW SERIES query returns the distinct series in your database.
+      /// </summary>
+      /// <param name="client">The IInfluxClient that performs operation.</param>
+      /// <param name="db"></param>
+      /// <returns></returns>
+      public static async Task<IList<T>> ShowSeriesAsync<T>(this IInfluxClient client, string db)
+      {
+          var result = await client.ShowSeriesAsync(db);
+
+          return ParseSeriesKeys<T>(result.Series);
+      }
+
+      /// <summary>
+      /// The SHOW SERIES query returns the distinct series in your database.
+      /// </summary>
+      /// <param name="client">The IInfluxClient that performs operation.</param>
+      /// <param name="db"></param>
+      /// <param name="measurementName"></param>
+      /// <returns></returns>
+      public static async Task<IList<T>> ShowSeriesAsync<T>(this IInfluxClient client, string db, string measurementName)
+      {
+          var result = await client.ShowSeriesAsync(db, measurementName);
+
+          return ParseSeriesKeys<T>(result.Series);
+      }
+
+      /// <summary>
+      /// The SHOW SERIES query returns the distinct series in your database.
+      /// </summary>
+      /// <param name="client">The IInfluxClient that performs operation.</param>
+      /// <param name="db"></param>
+      /// <param name="measurementName"></param>
+      /// <param name="where"></param>
+      /// <returns></returns>
+      public static async Task<IList<T>> ShowSeriesAsync<T>(this IInfluxClient client, string db, string measurementName, string where)
+      {
+          var result = await client.ShowSeriesAsync(db, measurementName, where);
+
+          return ParseSeriesKeys<T>(result.Series);
       }
 
       /// <summary>
